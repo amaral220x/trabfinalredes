@@ -1,0 +1,4 @@
+Average fetch time: 2.9143 seconds
+Standard deviation: 1.0737 seconds
+Number of samples: 9
+All fetch times: [4.260621, 2.265444, 2.173871, 2.890561, 3.289221, 3.231415, 4.545079, 2.491701, 1.081087]
