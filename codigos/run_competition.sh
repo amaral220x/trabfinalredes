@@ -107,12 +107,16 @@ run_experiment() {
     echo "Pressione Ctrl+C para interromper"
     echo
     
+    # Definir cenário baseado nos parâmetros ou usar padrão
+    SCENARIO=${SCENARIO:-"reno_vs_bbr"}
+    
     # Executar o script principal
     sudo python3 tcp_competition.py \
         --bw-net $BANDWIDTH \
         --delay $DELAY \
         --maxq $QUEUE \
         --time $TIME \
+        --scenario $SCENARIO \
         --dir $RESULTS_DIR
     
     if [ $? -eq 0 ]; then
@@ -140,31 +144,46 @@ analyze_results() {
 run_scenarios() {
     echo "Executando múltiplos cenários..."
     
-    # Cenário 1: Baixa largura de banda, baixo atraso
-    echo "Cenário 1: Baixa largura de banda (5 Mbps), baixo atraso (10 ms)"
-    SCENARIO_DIR="results/scenario1_low_bw_low_delay"
+    # Cenário 1: 1 Reno vs 1 BBR
+    echo "Cenário 1: 1 TCP Reno vs 1 TCP BBR"
+    SCENARIO_DIR="results/scenario1_1reno_vs_1bbr"
     mkdir -p $SCENARIO_DIR
-    sudo python3 tcp_competition.py --bw-net 5 --delay 10 --maxq 100 --time 30 --dir $SCENARIO_DIR
+    sudo python3 tcp_competition.py --bw-net 10 --delay 50 --maxq 100 --time 30 --scenario reno_vs_bbr --dir $SCENARIO_DIR
     
-    # Cenário 2: Baixa largura de banda, alto atraso
-    echo "Cenário 2: Baixa largura de banda (5 Mbps), alto atraso (100 ms)"
-    SCENARIO_DIR="results/scenario2_low_bw_high_delay"
+    # Cenário 2: 2 Reno vs 2 BBR
+    echo "Cenário 2: 2 TCP Reno vs 2 TCP BBR"
+    SCENARIO_DIR="results/scenario2_2reno_vs_2bbr"
     mkdir -p $SCENARIO_DIR
-    sudo python3 tcp_competition.py --bw-net 5 --delay 100 --maxq 100 --time 30 --dir $SCENARIO_DIR
+    sudo python3 tcp_competition.py --bw-net 10 --delay 50 --maxq 100 --time 30 --scenario 2reno_vs_2bbr --dir $SCENARIO_DIR
     
-    # Cenário 3: Alta largura de banda, baixo atraso
-    echo "Cenário 3: Alta largura de banda (50 Mbps), baixo atraso (10 ms)"
-    SCENARIO_DIR="results/scenario3_high_bw_low_delay"
+    # Cenário 3: 2 Reno vs 1 BBR
+    echo "Cenário 3: 2 TCP Reno vs 1 TCP BBR"
+    SCENARIO_DIR="results/scenario3_2reno_vs_1bbr"
     mkdir -p $SCENARIO_DIR
-    sudo python3 tcp_competition.py --bw-net 50 --delay 10 --maxq 100 --time 30 --dir $SCENARIO_DIR
+    sudo python3 tcp_competition.py --bw-net 10 --delay 50 --maxq 100 --time 30 --scenario 2reno_vs_1bbr --dir $SCENARIO_DIR
     
-    # Cenário 4: Fila pequena
-    echo "Cenário 4: Fila pequena (20 pacotes)"
-    SCENARIO_DIR="results/scenario4_small_queue"
+    # Cenário 4: Buffer pequeno
+    echo "Cenário 4: 1 vs 1 com buffer pequeno"
+    SCENARIO_DIR="results/scenario4_small_buffer"
     mkdir -p $SCENARIO_DIR
-    sudo python3 tcp_competition.py --bw-net 10 --delay 50 --maxq 20 --time 30 --dir $SCENARIO_DIR
+    sudo python3 tcp_competition.py --bw-net 10 --delay 50 --maxq 20 --time 30 --scenario reno_vs_bbr --dir $SCENARIO_DIR
+    
+    # Cenário 5: Alta latência
+    echo "Cenário 5: 1 vs 1 com alta latência"
+    SCENARIO_DIR="results/scenario5_high_latency"
+    mkdir -p $SCENARIO_DIR
+    sudo python3 tcp_competition.py --bw-net 10 --delay 100 --maxq 100 --time 30 --scenario reno_vs_bbr --dir $SCENARIO_DIR
     
     echo "Todos os cenários executados!"
+    echo "Gerando relatório comparativo..."
+    
+    # Gerar visualizações para cada cenário
+    for scenario in results/scenario*; do
+        if [ -d "$scenario" ]; then
+            echo "Gerando visualizações para $scenario..."
+            python3 plot_competition.py --dir $scenario --type dashboard
+        fi
+    done
 }
 
 # Gerar relatório comparativo
@@ -219,26 +238,44 @@ EOF
 # Menu interativo
 show_menu() {
     echo "=== Menu de Experimentos TCP ==="
-    echo "1. Executar experimento único"
-    echo "2. Executar múltiplos cenários"
-    echo "3. Apenas analisar resultados existentes"
-    echo "4. Mostrar configuração atual"
-    echo "5. Sair"
+    echo "1. Experimento 1 vs 1 (TCP Reno vs TCP BBR)"
+    echo "2. Experimento 2 vs 2 (2 TCP Reno vs 2 TCP BBR)"
+    echo "3. Experimento 2 vs 1 (2 TCP Reno vs 1 TCP BBR)"
+    echo "4. Executar múltiplos cenários"
+    echo "5. Apenas analisar resultados existentes"
+    echo "6. Gerar visualizações da competição"
+    echo "7. Mostrar configuração atual"
+    echo "8. Sair"
     echo
-    read -p "Escolha uma opção (1-5): " choice
+    read -p "Escolha uma opção (1-8): " choice
     
     case $choice in
         1)
             check_dependencies
+            SCENARIO="reno_vs_bbr"
             run_experiment
             analyze_results
             generate_report
             ;;
         2)
             check_dependencies
-            run_scenarios
+            SCENARIO="2reno_vs_2bbr"
+            run_experiment
+            analyze_results
+            generate_report
             ;;
         3)
+            check_dependencies
+            SCENARIO="2reno_vs_1bbr"
+            run_experiment
+            analyze_results
+            generate_report
+            ;;
+        4)
+            check_dependencies
+            run_scenarios
+            ;;
+        5)
             read -p "Digite o diretório de resultados: " results_dir
             if [ -d "$results_dir" ]; then
                 python3 analyze_competition.py --dir $results_dir --plot
@@ -246,14 +283,23 @@ show_menu() {
                 echo "Diretório não encontrado: $results_dir"
             fi
             ;;
-        4)
+        6)
+            read -p "Digite o diretório de resultados: " results_dir
+            if [ -d "$results_dir" ]; then
+                python3 plot_competition.py --dir $results_dir --type dashboard
+                python3 plot_competition.py --dir $results_dir --type timeline
+            else
+                echo "Diretório não encontrado: $results_dir"
+            fi
+            ;;
+        7)
             echo "Configuração atual:"
             echo "  Largura de banda: ${BANDWIDTH} Mbps"
             echo "  Atraso: ${DELAY} ms"
             echo "  Tamanho da fila: ${QUEUE} pacotes"
             echo "  Duração: ${TIME} segundos"
             ;;
-        5)
+        8)
             echo "Saindo..."
             exit 0
             ;;
