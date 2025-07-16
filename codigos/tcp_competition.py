@@ -204,6 +204,27 @@ def parse_iperf_output(output_file):
     
     return throughputs
 
+def cleanup_network():
+    """Clean up existing network interfaces and processes."""
+    print("Cleaning up network interfaces and processes...")
+    
+    # Kill any existing iperf processes
+    Popen("sudo pkill -f iperf", shell=True).wait()
+    
+    # Kill any existing ping processes
+    Popen("sudo pkill -f ping", shell=True).wait()
+    
+    # Clean up Mininet
+    Popen("sudo mn -c", shell=True).wait()
+    
+    # Remove any leftover network namespaces
+    Popen("sudo ip netns flush", shell=True).wait()
+    
+    # Give some time for cleanup
+    sleep(1)
+    
+    print("Network cleanup completed.")
+
 def analyze_competition_results(results_dir):
     """Analyze competition results and determine winner."""
     results = {}
@@ -280,44 +301,83 @@ def run_competition_experiment():
     if not os.path.exists(args.dir):
         os.makedirs(args.dir)
     
+    # Clean up any existing Mininet processes and interfaces
+    cleanup_network()
+    
     # Create and start network
     topo = CompetitionTopo(scenario=args.scenario)
     net = Mininet(topo=topo, host=CPULimitedHost, link=TCLink)
-    net.start()
+    
+    try:
+        net.start()
+    except Exception as e:
+        print(f"Error starting network: {e}")
+        print("Attempting cleanup and retry...")
+        net.stop()
+        cleanup_network()
+        net = Mininet(topo=topo, host=CPULimitedHost, link=TCLink)
+        net.start()
     
     print("Network topology:")
     dumpNodeConnections(net.hosts)
     net.pingAll()
     
+    # Find the correct interface for queue monitoring
+    s1 = net.get('s1')
+    queue_interface = None
+    
+    # Try to find the interface connected to s2
+    for intf in s1.intfNames():
+        if 'eth' in intf:
+            # Check if this interface is connected to s2
+            cmd_result = s1.cmd(f'ip link show {intf}')
+            if 'state UP' in cmd_result or 'UNKNOWN' in cmd_result:
+                queue_interface = intf
+                break
+    
+    if not queue_interface:
+        # Fallback to a common interface name
+        queue_interface = 's1-eth2'  # Common bottleneck interface
+    
+    print(f"Using interface {queue_interface} for queue monitoring")
+    
     # Start queue monitoring
-    qmon = Process(target=monitor_qlen, args=('s1-eth5', 0.1, f'{args.dir}/queue.txt'))
+    qmon = Process(target=monitor_qlen, args=(queue_interface, 0.1, f'{args.dir}/queue.txt'))
     qmon.start()
     
-    # Run experiment based on scenario
-    if args.scenario == 'reno_vs_bbr':
-        run_1v1_experiment(net)
-    elif args.scenario == '2reno_vs_2bbr':
-        run_2v2_experiment(net)
-    elif args.scenario == '2reno_vs_1bbr':
-        run_2v1_experiment(net)
+    try:
+        # Run experiment based on scenario
+        if args.scenario == 'reno_vs_bbr':
+            run_1v1_experiment(net)
+        elif args.scenario == '2reno_vs_2bbr':
+            run_2v2_experiment(net)
+        elif args.scenario == '2reno_vs_1bbr':
+            run_2v1_experiment(net)
+        
+        # Stop monitoring
+        qmon.terminate()
+        
+        # Analyze results
+        results = analyze_competition_results(args.dir)
+        
+        # Save results
+        with open(f'{args.dir}/competition_results.json', 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        # Print summary
+        print_results_summary(results)
+        
+    except Exception as e:
+        print(f"Error during experiment: {e}")
+        if qmon.is_alive():
+            qmon.terminate()
     
-    # Stop monitoring
-    qmon.terminate()
-    
-    # Analyze results
-    results = analyze_competition_results(args.dir)
-    
-    # Save results
-    with open(f'{args.dir}/competition_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    # Print summary
-    print_results_summary(results)
-    
-    net.stop()
-    
-    # Clean up any remaining processes
-    Popen("pkill -f iperf", shell=True).wait()
+    finally:
+        # Clean up network
+        net.stop()
+        
+        # Comprehensive cleanup
+        cleanup_network()
 
 def run_1v1_experiment(net):
     """Run 1 Reno vs 1 BBR experiment."""
