@@ -227,6 +227,19 @@ def analyze_competition_results(results_dir):
     reno_flows = {k: v for k, v in results.items() if 'reno' in k.lower()}
     bbr_flows = {k: v for k, v in results.items() if 'bbr' in k.lower()}
     
+    # Create structured output
+    output = {
+        'scenario': args.scenario,
+        'configuration': {
+            'bandwidth': args.bw_net,
+            'delay': args.delay,
+            'queue_size': args.maxq,
+            'duration': args.time
+        },
+        'reno_flows': [v for v in reno_flows.values()],
+        'bbr_flows': [v for v in bbr_flows.values()]
+    }
+    
     if reno_flows and bbr_flows:
         # Calculate total throughput for each algorithm
         reno_total = sum(flow['avg_throughput'] for flow in reno_flows.values())
@@ -242,25 +255,25 @@ def analyze_competition_results(results_dir):
         else:
             fairness_index = 0
         
-        results['fairness_index'] = fairness_index
+        output['fairness_index'] = fairness_index
         
         # Determine winner
         if reno_total > bbr_total:
-            results['winner'] = 'TCP Reno'
-            results['advantage'] = (reno_total - bbr_total) / bbr_total * 100
+            output['winner'] = 'TCP Reno'
+            output['advantage'] = (reno_total - bbr_total) / bbr_total * 100
         else:
-            results['winner'] = 'TCP BBR'
-            results['advantage'] = (bbr_total - reno_total) / reno_total * 100
+            output['winner'] = 'TCP BBR'
+            output['advantage'] = (bbr_total - reno_total) / reno_total * 100
         
         # Additional statistics
-        results['reno_total'] = reno_total
-        results['bbr_total'] = bbr_total
-        results['reno_flows_count'] = len(reno_flows)
-        results['bbr_flows_count'] = len(bbr_flows)
-        results['reno_avg_per_flow'] = reno_total / len(reno_flows)
-        results['bbr_avg_per_flow'] = bbr_total / len(bbr_flows)
+        output['reno_total'] = reno_total
+        output['bbr_total'] = bbr_total
+        output['reno_flows_count'] = len(reno_flows)
+        output['bbr_flows_count'] = len(bbr_flows)
+        output['reno_avg_per_flow'] = reno_total / len(reno_flows)
+        output['bbr_avg_per_flow'] = bbr_total / len(bbr_flows)
     
-    return results
+    return output
 
 def run_competition_experiment():
     """Run the TCP competition experiment."""
@@ -466,14 +479,14 @@ def print_results_summary(results):
     print("TCP COMPETITION RESULTS")
     print("="*50)
     
-    # Count flows by algorithm
-    reno_flows = [k for k in results.keys() if 'reno' in k.lower() and 'flow' in k]
-    bbr_flows = [k for k in results.keys() if 'bbr' in k.lower() and 'flow' in k]
-    
-    if reno_flows and bbr_flows:
+    # Check if results have the new format with reno_flows and bbr_flows
+    if 'reno_flows' in results and 'bbr_flows' in results:
+        reno_flows = results['reno_flows']
+        bbr_flows = results['bbr_flows']
+        
         # Calculate totals
-        reno_total = sum(results[flow]['avg_throughput'] for flow in reno_flows)
-        bbr_total = sum(results[flow]['avg_throughput'] for flow in bbr_flows)
+        reno_total = sum(flow['avg_throughput'] for flow in reno_flows)
+        bbr_total = sum(flow['avg_throughput'] for flow in bbr_flows)
         
         print(f"Scenario: {args.scenario}")
         print(f"TCP Reno flows: {len(reno_flows)}")
@@ -501,6 +514,28 @@ def print_results_summary(results):
         # Fairness analysis
         if 'fairness_index' in results:
             print(f"Fairness Index: {results['fairness_index']:.3f}")
+    
+    else:
+        # Fallback for old format
+        reno_flows = [k for k in results.keys() if 'reno' in k.lower() and 'flow' in k]
+        bbr_flows = [k for k in results.keys() if 'bbr' in k.lower() and 'flow' in k]
+        
+        if reno_flows and bbr_flows:
+            reno_total = sum(results[flow]['avg_throughput'] for flow in reno_flows)
+            bbr_total = sum(results[flow]['avg_throughput'] for flow in bbr_flows)
+            
+            print(f"TCP Reno Total Throughput: {reno_total:.2f} Mbps")
+            print(f"TCP BBR Total Throughput: {bbr_total:.2f} Mbps")
+            
+            if reno_total > bbr_total:
+                winner = "TCP Reno"
+                advantage = (reno_total - bbr_total) / bbr_total * 100
+            else:
+                winner = "TCP BBR"
+                advantage = (bbr_total - reno_total) / reno_total * 100
+            
+            print(f"Winner: {winner}")
+            print(f"Advantage: {advantage:.1f}%")
     
     print("\nDetailed metrics saved to:", f'{args.dir}/competition_results.json')
 
