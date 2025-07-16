@@ -136,26 +136,6 @@ analyze_results() {
     fi
 }
 
-# Gerar visualizações da competição
-generate_competition_plots() {
-    echo "Gerando visualizações da competição..."
-    
-    if [ -f "$RESULTS_DIR/competition_results.json" ]; then
-        # Gerar dashboard interativo
-        python3 plot_competition.py --dir $RESULTS_DIR --type dashboard
-        
-        # Gerar timeline da competição
-        python3 plot_competition.py --dir $RESULTS_DIR --type timeline
-        
-        echo "Visualizações geradas:"
-        echo "  - Dashboard: $RESULTS_DIR/competition_dashboard.png"
-        echo "  - Timeline: $RESULTS_DIR/competition_timeline.png"
-        echo "  - Animação: Execute 'python3 plot_competition.py --dir $RESULTS_DIR --type animated'"
-    else
-        echo "Arquivo de resultados não encontrado para visualizações"
-    fi
-}
-
 # Executar diferentes cenários
 run_scenarios() {
     echo "Executando múltiplos cenários..."
@@ -242,19 +222,16 @@ show_menu() {
     echo "1. Executar experimento único"
     echo "2. Executar múltiplos cenários"
     echo "3. Apenas analisar resultados existentes"
-    echo "4. Gerar visualizações da competição"
-    echo "5. Visualização animada"
-    echo "6. Mostrar configuração atual"
-    echo "7. Sair"
+    echo "4. Mostrar configuração atual"
+    echo "5. Sair"
     echo
-    read -p "Escolha uma opção (1-7): " choice
+    read -p "Escolha uma opção (1-5): " choice
     
     case $choice in
         1)
             check_dependencies
             run_experiment
             analyze_results
-            generate_competition_plots
             generate_report
             ;;
         2)
@@ -270,30 +247,13 @@ show_menu() {
             fi
             ;;
         4)
-            read -p "Digite o diretório de resultados: " results_dir
-            if [ -d "$results_dir" ]; then
-                python3 plot_competition.py --dir $results_dir --type dashboard
-                python3 plot_competition.py --dir $results_dir --type timeline
-            else
-                echo "Diretório não encontrado: $results_dir"
-            fi
-            ;;
-        5)
-            read -p "Digite o diretório de resultados: " results_dir
-            if [ -d "$results_dir" ]; then
-                python3 plot_competition.py --dir $results_dir --type animated
-            else
-                echo "Diretório não encontrado: $results_dir"
-            fi
-            ;;
-        6)
             echo "Configuração atual:"
             echo "  Largura de banda: ${BANDWIDTH} Mbps"
             echo "  Atraso: ${DELAY} ms"
             echo "  Tamanho da fila: ${QUEUE} pacotes"
             echo "  Duração: ${TIME} segundos"
             ;;
-        7)
+        5)
             echo "Saindo..."
             exit 0
             ;;
@@ -312,7 +272,6 @@ main() {
         check_dependencies
         run_experiment
         analyze_results
-        generate_competition_plots
         generate_report
     fi
 }
